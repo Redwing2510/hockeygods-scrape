@@ -1,0 +1,66 @@
+name: Daily digest
+
+# GitHub Actions cron is UTC-only and doesn't shift for US daylight saving, so
+# there's no single cron expression that's always "noon Eastern". Fix: fire at
+# both UTC times that noon Eastern can be (EDT and EST), and let the first
+# step skip whichever one doesn't match the real current Eastern hour. Exactly
+# one of the two actually runs the digest on any given day.
+on:
+  schedule:
+    - cron: "0 16 * * *" # 12:00 EDT (mid-Mar -> early Nov)
+    - cron: "0 17 * * *" # 12:00 EST (early Nov -> mid-Mar)
+  workflow_dispatch: {} # manual "Run workflow" button in the Actions tab
+
+permissions:
+  contents: write # needed to commit data/seen.json back after each run
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only proceed if it's actually noon Eastern right now
+        id: gate
+        run: |
+          hour=$(TZ="America/New_York" date +%H)
+          if [ "$hour" = "12" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "It's $hour:00 Eastern, not noon — this is the other seasonal trigger, skipping."
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.proceed == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.proceed == 'true'
+        with:
+          node-version: "lts/*"
+
+      - name: Install dependencies
+        if: steps.gate.outputs.proceed == 'true'
+        run: npm ci
+
+      - name: Run the digest
+        if: steps.gate.outputs.proceed == 'true'
+        env:
+          REDDITAPIS_TOKEN: ${{ secrets.REDDITAPIS_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: claude-sonnet-5
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          DIGEST_TO: ${{ secrets.DIGEST_TO }}
+        run: npm run digest
+
+      # Runners are a fresh VM every time, so data/seen.json (the dedup memory
+      # from src/seen.ts) has to be committed back or every run would think
+      # every post is brand new. Safe to always attempt: a no-op commit when
+      # nothing changed just does nothing.
+      - name: Save updated seen-post tracking
+        if: steps.gate.outputs.proceed == 'true'
+        run: |
+          git config user.name "hockeygods-scrape bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/seen.json
+          git diff --cached --quiet || git commit -m "Update seen-post tracking [skip ci]"
+          git push

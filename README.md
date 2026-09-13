@@ -73,27 +73,47 @@ produces. Progress prints per-subreddit as it goes. With `REDDITAPIS_TOKEN`
 set the whole run finishes in well under a minute of fetch time; on the free
 RSS fallback, expect ~30-35 minutes.
 
-## Running it every morning
+## Running it every day — GitHub Actions
 
-macOS's own scheduler (`launchd`) is the simplest way to do this without
-paying for hosting, since it just needs to run once a day on a machine that's
-usually on anyway.
+`.github/workflows/digest.yml` runs this on GitHub's own infrastructure at
+noon Eastern, every day, with no dependency on any machine being on. At this
+project's volume (redditapis.com's throughput, one drafting call per team)
+it's comfortably inside GitHub's free minutes for a private repo, and secrets
+never appear in logs or in the (public) code.
 
-```bash
-cp launchd/com.hockeygods.scrape-digest.plist ~/Library/LaunchAgents/
-# edit the copied file: fix the two /ABSOLUTE/PATH/TO placeholders
-launchctl load ~/Library/LaunchAgents/com.hockeygods.scrape-digest.plist
-```
+One-time setup, in the repo's GitHub page: **Settings → Secrets and variables
+→ Actions → New repository secret**, one for each of:
 
-It's set to run at 6:15am local time (so it's done well before 7); change the
-`Hour`/`Minute` in the plist to taste. Logs land in `digest.log` / `digest.err`
-next to the project.
+- `REDDITAPIS_TOKEN`
+- `ANTHROPIC_API_KEY`
+- `GMAIL_USER`
+- `GMAIL_APP_PASSWORD`
+- `DIGEST_TO`
 
-To stop it: `launchctl unload ~/Library/LaunchAgents/com.hockeygods.scrape-digest.plist`.
+— same values as `.env`. Nothing else to configure; the workflow reads those
+in and runs `npm run digest` exactly like running it locally.
 
-If this ends up running somewhere other than a Mac that's regularly on (a
-server, a scheduled cloud job), swap `launchd` for a plain cron entry or a
-GitHub Actions scheduled workflow — `src/index.ts` doesn't care what invokes it.
+**Why the workflow looks more complex than one cron line:** GitHub Actions'
+`schedule:` trigger is UTC-only and doesn't shift for US daylight saving —
+there's no cron expression that's always "noon Eastern" year-round. Fix: it's
+scheduled at both UTC times noon Eastern can be (16:00 UTC for EDT, 17:00 UTC
+for EST), and the first step checks the real current Eastern hour and skips
+the run if it isn't actually noon — so exactly one of the two firings does
+anything on any given day, automatically correct across the DST transitions.
+
+**Why it commits a file back to the repo:** GitHub's runners are a fresh VM
+every time, so `data/seen.json` (the dedup memory from `src/seen.ts`) would
+reset to empty on every run without this — meaning no repeat-suppression at
+all. The workflow's last step commits the updated file back after a real run,
+which is also why `data/` isn't gitignored here, unlike a typical project.
+
+**To test without waiting for noon:** the repo's Actions tab → "Daily digest"
+→ "Run workflow" triggers it immediately, real send included.
+
+**If this ever needs to run locally instead** (a Mac that's reliably on,
+say): `launchd/com.hockeygods.scrape-digest.plist` still exists for that — see
+the git history for the `launchctl load` steps. Don't run both at once, or
+Drew gets two emails a day.
 
 ## How the filtering works
 
