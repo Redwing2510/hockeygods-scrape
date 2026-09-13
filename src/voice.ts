@@ -41,6 +41,17 @@ force it. Being extra selective in these picks is correct behavior — a person
 still has to pick one before it gets posted, so it's fine, expected even, if
 most stories are skipped.
 
+A story marked [PINNED by mods] could be either thing: permanent housekeeping
+a subreddit always keeps at the top (rules, a daily/weekly discussion thread,
+a tickets megathread) — never a story, skip on sight — or a megathread the
+mods pinned specifically because it IS the story (a trade, a big signing, a
+major injury), in which case treat it completely normally and don't penalize
+it for being pinned. Tell the two apart the same way you'd tell any other
+story apart: does the title describe an actual event, or is it clearly a
+recurring fixture. A pinned megathread's comment count is often the highest
+of anything in the sub that day, which is a fanbase-reaction goldmine, not a
+reason for suspicion.
+
 For every story that DOES fit, write exactly 3 distinct tweet options: one
 straight/dry, one a bit more pointed, one that leans hardest into the "gods"
 framing. Each must stand alone (no "as mentioned above"), fit in 280

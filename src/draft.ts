@@ -25,6 +25,7 @@ export async function draftForTeam(team: string, posts: Candidate[]): Promise<Dr
     .slice(0, 15)
     .map((p, i) => {
       const age = hoursAgo(p.publishedAt);
+      const pinned = p.stickied ? " [PINNED by mods]" : "";
       const engagement =
         p.upvotes != null ? ` — ${p.upvotes} upvotes, ${p.numComments} comments` : "";
       const link = p.externalUrl ? `\n   article: ${p.externalUrl}` : "";
@@ -33,7 +34,7 @@ export async function draftForTeam(team: string, posts: Candidate[]): Promise<Dr
         .map((c) => `     "${c.body.replace(/\s+/g, " ").slice(0, 200)}" (${c.score} pts)`)
         .join("\n");
       const commentsBlock = comments ? `\n   top comments:\n${comments}` : "";
-      return `${i + 1}. "${p.title}" (${age}h ago, r/${p.subreddit} hot${engagement})${link}${commentsBlock}`;
+      return `${i + 1}. "${p.title}"${pinned} (${age}h ago, r/${p.subreddit} hot${engagement})${link}${commentsBlock}`;
     })
     .join("\n");
 

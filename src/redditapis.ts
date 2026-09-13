@@ -49,20 +49,23 @@ export async function fetchHotPosts(subreddit: string, limit = 15): Promise<Cand
   const data = await get<{ posts: ApiPost[] }>(
     `/api/reddit/posts?subreddit=${subreddit}&sort=hot&limit=${limit}`,
   );
-  return (data.posts ?? [])
-    // Pinned community threads (rules megathreads, "anything goes" days,
-    // tickets megathreads) — permanent fixtures of "hot", never a story.
-    .filter((p) => !p.stickied)
-    .map((p) => ({
-      id: p.id,
-      subreddit: p.subreddit,
-      title: p.title,
-      permalink: p.url,
-      externalUrl: p.link_url ?? undefined,
-      publishedAt: p.created,
-      upvotes: p.upvotes ?? 0,
-      numComments: p.comments ?? 0,
-    }));
+  // Pinned isn't filtered out here — a mod team pins BOTH permanent
+  // housekeeping (rules, daily discussion) AND the trade/news megathread
+  // they made specifically because it's the story, often the single
+  // highest-engagement thread that day. Telling those apart needs the title
+  // and content, so `stickied` is passed through for the drafting prompt to
+  // judge rather than discarded blind.
+  return (data.posts ?? []).map((p) => ({
+    id: p.id,
+    subreddit: p.subreddit,
+    title: p.title,
+    permalink: p.url,
+    externalUrl: p.link_url ?? undefined,
+    publishedAt: p.created,
+    upvotes: p.upvotes ?? 0,
+    numComments: p.comments ?? 0,
+    stickied: p.stickied,
+  }));
 }
 
 interface ApiCommentNode {
