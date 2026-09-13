@@ -12,21 +12,28 @@
     <string>/bin/zsh</string>
     <string>-l</string>
     <string>-c</string>
-    <string>cd /ABSOLUTE/PATH/TO/hockeygods-scrape &amp;&amp; npm run digest</string>
+    <string>cd /Users/nicklamanna/Documents/hockeygods-scrape &amp;&amp; npm run digest</string>
   </array>
 
+  <!-- launchd's calendar interval is wall-clock time in the Mac's own system
+       timezone, not a fixed UTC offset. This machine's system timezone is
+       already America/New_York (confirmed via `date` -> EDT), so 12:00 here
+       really is 12:00 Eastern, and macOS's own DST handling keeps it there
+       year-round without any change needed at the fall/spring transitions.
+       If this ever runs on a machine set to a different timezone, these
+       numbers need to be that zone's local-time equivalent of noon Eastern. -->
   <key>StartCalendarInterval</key>
   <dict>
     <key>Hour</key>
-    <integer>6</integer>
+    <integer>12</integer>
     <key>Minute</key>
-    <integer>15</integer>
+    <integer>0</integer>
   </dict>
 
   <key>StandardOutPath</key>
-  <string>/ABSOLUTE/PATH/TO/hockeygods-scrape/digest.log</string>
+  <string>/Users/nicklamanna/Documents/hockeygods-scrape/digest.log</string>
   <key>StandardErrorPath</key>
-  <string>/ABSOLUTE/PATH/TO/hockeygods-scrape/digest.err</string>
+  <string>/Users/nicklamanna/Documents/hockeygods-scrape/digest.err</string>
 
   <key>RunAtLoad</key>
   <false/>
