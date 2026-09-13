@@ -1,15 +1,19 @@
 import nodemailer from "nodemailer";
 import type { DraftedStory } from "./draft.js";
+import { teamName } from "./teams.js";
 
 export function renderDigestHtml(date: string, stories: DraftedStory[]): string {
   if (stories.length === 0) {
     return `<p>Nothing fit the "hockey gods" lens across today's team subs — genuinely quiet day, or worth a manual look.</p>`;
   }
-  const sections = stories
+  const sorted = [...stories].sort((a, b) =>
+    teamName(a.team).localeCompare(teamName(b.team)),
+  );
+  const sections = sorted
     .map(
       (s) => `
       <div style="margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid #333;">
-        <p style="color:#8fb6e4;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 6px;">${s.team}</p>
+        <p style="color:#8fb6e4;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 6px;">${teamName(s.team)}</p>
         <p style="margin:0 0 10px;">
           <a href="${s.sourceUrl}" style="color:#f2f0ec;">${escapeHtml(s.sourceTitle)}</a>
         </p>
