@@ -25,14 +25,15 @@ export async function draftForTeam(
   if (!key) throw new Error("Missing ANTHROPIC_API_KEY — copy .env.example to .env and fill it in.");
 
   const listing = posts
-    .slice(0, 12)
-    .map(
-      (p, i) =>
-        `${i + 1}. "${p.title}" — ${p.score} upvotes, ${p.numComments} comments\n   ${p.permalink}`,
-    )
+    .slice(0, 15)
+    .map((p, i) => {
+      const age = hoursAgo(p.publishedAt);
+      const link = p.externalUrl ? `\n   article: ${p.externalUrl}` : "";
+      return `${i + 1}. "${p.title}" (${age}h ago, r/${p.subreddit} hot)${link}`;
+    })
     .join("\n");
 
-  const prompt = `${VOICE_GUIDE}\n\n${DRAFTING_INSTRUCTIONS}\n\nTeam: ${team}\nToday's r/${team.toLowerCase()} candidates, hot + rising:\n\n${listing}\n\nRespond with ONLY a JSON array (no prose, no markdown fence), one object per story worth drafting:\n[{"sourceIndex": 1, "tweets": ["...", "...", "..."]}]\nAn empty array [] is a completely valid answer if nothing fits today.`;
+  const prompt = `${VOICE_GUIDE}\n\n${DRAFTING_INSTRUCTIONS}\n\nTeam: ${team}\nToday's r/${team.toLowerCase()} hot posts:\n\n${listing}\n\nRespond with ONLY a JSON array (no prose, no markdown fence), one object per story worth drafting:\n[{"sourceIndex": 1, "tweets": ["...", "...", "..."]}]\nAn empty array [] is a completely valid answer if nothing fits today.`;
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -74,4 +75,10 @@ export async function draftForTeam(
       };
     })
     .filter((x): x is DraftedStory => x !== null);
+}
+
+function hoursAgo(iso: string): number {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return 0;
+  return Math.max(0, Math.round((Date.now() - t) / 3_600_000));
 }

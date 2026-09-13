@@ -1,110 +1,106 @@
 /**
- * Read-only Reddit access via app-only OAuth (the "client_credentials" grant).
- * This works for public subreddits with just a client id/secret — no bot
- * account, no username/password, no elevated scopes. Reddit's unauthenticated
- * `.json` endpoints now return 403 for non-browser clients, so this is the only
- * reliable path (confirmed by hand: `curl .../hot.json` -> 403 as of Sept 2026).
+ * Reddit's read-only OAuth API requires registering an app, and by late 2025
+ * that path had enough friction (verification steps, review) that it wasn't
+ * worth it for this. Its RSS feeds, though, still work with zero signup —
+ * confirmed by hand: `curl .../hot.rss` -> 200 with real entries, no auth.
  *
- * Create the app at https://www.reddit.com/prefs/apps -> "create app" -> type
- * "script". The client id is the string under the app name; the secret is
- * labelled "secret".
+ * The tradeoff is a hard rate limit: Reddit's response headers show exactly
+ * one request per ~60 seconds per IP (`x-ratelimit-remaining: 0`, `reset: 55`
+ * after a single call). fetchHot() below paces itself against that, reading
+ * the real reset time off each response rather than guessing — so a 33-
+ * subreddit run takes about half an hour, which is fine for something that
+ * runs once before anyone's awake to read the digest.
+ *
+ * No score or comment count is available this way (RSS doesn't carry them) —
+ * "hot" ordering already bakes in Reddit's own vote+recency ranking, so the
+ * feed's order is used as the relevance signal instead.
  */
 
 export interface RedditPost {
   id: string;
   subreddit: string;
   title: string;
-  selftext: string;
-  score: number;
-  numComments: number;
-  createdUtc: number;
+  /** The reddit comments thread. */
   permalink: string;
-  url: string;
-  isSelf: boolean;
+  /** The linked article, if the post links out rather than being a text post. */
+  externalUrl?: string;
+  publishedAt: string;
 }
 
-let cachedToken: { value: string; expiresAt: number } | null = null;
+const UA = process.env.REDDIT_USER_AGENT || "hockeygods-scrape/0.1 (+contact via account owner)";
+const MIN_GAP_MS = 61_000; // Reddit's own window is ~60s; pad it by a second.
 
-async function getToken(): Promise<string> {
-  if (cachedToken && cachedToken.expiresAt > Date.now() + 30_000) return cachedToken.value;
+let earliestNextRequest = 0;
 
-  const id = requireEnv("REDDIT_CLIENT_ID");
-  const secret = requireEnv("REDDIT_CLIENT_SECRET");
-  const ua = process.env.REDDIT_USER_AGENT || "hockeygods-scrape-bot/0.1";
+async function paced(url: string): Promise<Response> {
+  const wait = earliestNextRequest - Date.now();
+  if (wait > 0) await sleep(wait);
 
-  const res = await fetch("https://www.reddit.com/api/v1/access_token", {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${Buffer.from(`${id}:${secret}`).toString("base64")}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": ua,
-    },
-    body: "grant_type=client_credentials",
-  });
+  const res = await fetch(url, { headers: { "User-Agent": UA } });
+
+  const resetSec = Number(res.headers.get("x-ratelimit-reset"));
+  earliestNextRequest = Date.now() + (Number.isFinite(resetSec) ? resetSec * 1000 : MIN_GAP_MS);
+
+  if (res.status === 429) {
+    const retryAfter = Number(res.headers.get("retry-after"));
+    const backoff = Number.isFinite(retryAfter) ? retryAfter * 1000 : MIN_GAP_MS;
+    await sleep(backoff + 1000);
+    return paced(url); // one retry with the server's own timing; RSS is cheap to redo
+  }
+  return res;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Hot posts from one subreddit — the only listing fetched, to keep the daily
+ *  run to one pass rather than one pass per sort order. */
+export async function fetchHot(subreddit: string, limit = 15): Promise<RedditPost[]> {
+  const res = await paced(`https://www.reddit.com/r/${subreddit}/hot.rss?limit=${limit}`);
   if (!res.ok) {
-    throw new Error(`Reddit auth failed: HTTP ${res.status} — ${await res.text()}`);
+    throw new Error(`r/${subreddit} -> HTTP ${res.status}`);
   }
-  const data = (await res.json()) as { access_token: string; expires_in: number };
-  cachedToken = { value: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 };
-  return cachedToken.value;
+  return parseFeed(await res.text(), subreddit);
 }
 
-function requireEnv(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing ${name} — copy .env.example to .env and fill it in.`);
-  return v;
+function parseFeed(xml: string, subreddit: string): RedditPost[] {
+  const entries = xml.match(/<entry>[\s\S]*?<\/entry>/g) ?? [];
+  return entries
+    .map((entry) => {
+      const id = tag(entry, "id")?.replace(/^t3_/, "") ?? "";
+      const title = decode(tag(entry, "title") ?? "");
+      const permalink = attr(entry, "link", "href") ?? "";
+      const published = tag(entry, "published") ?? "";
+      // <content> is HTML-escaped text containing more HTML (`&lt;a href=...`),
+      // so it needs one decode() pass just to see the tags, and a URL found
+      // inside is entity-encoded *again* on top of that (a literal "&" comes
+      // through as "&amp;amp;") — hence decoding the extracted href a second time.
+      const rawLinkHref = decode(tag(entry, "content") ?? "").match(/href="([^"]+)">\[link\]/)?.[1];
+      const externalUrl = rawLinkHref && decode(rawLinkHref);
+      // Self-posts' [link] just points back at the thread — not "external".
+      return {
+        id,
+        subreddit,
+        title,
+        permalink,
+        externalUrl: externalUrl && externalUrl !== permalink ? externalUrl : undefined,
+        publishedAt: published,
+      };
+    })
+    .filter((p) => p.id && p.title);
 }
 
-/**
- * Hot and rising posts from one subreddit, merged and de-duplicated. Rising
- * catches something breaking in the last hour or two that hot hasn't caught up
- * to yet — the "as it's happening" half of the ask.
- */
-export async function fetchCandidatePosts(subreddit: string, limit = 15): Promise<RedditPost[]> {
-  const token = await getToken();
-  const ua = process.env.REDDIT_USER_AGENT || "hockeygods-scrape-bot/0.1";
-  const headers = { Authorization: `Bearer ${token}`, "User-Agent": ua };
-
-  const [hot, rising] = await Promise.all([
-    fetchListing(`https://oauth.reddit.com/r/${subreddit}/hot`, limit, headers),
-    fetchListing(`https://oauth.reddit.com/r/${subreddit}/rising`, Math.ceil(limit / 2), headers),
-  ]);
-
-  const seen = new Set<string>();
-  const merged: RedditPost[] = [];
-  for (const p of [...rising, ...hot]) {
-    if (seen.has(p.id)) continue;
-    seen.add(p.id);
-    merged.push(p);
-  }
-  return merged;
+function tag(xml: string, name: string): string | undefined {
+  return xml.match(new RegExp(`<${name}[^>]*>([\\s\\S]*?)</${name}>`))?.[1];
 }
-
-async function fetchListing(
-  url: string,
-  limit: number,
-  headers: Record<string, string>,
-): Promise<RedditPost[]> {
-  const res = await fetch(`${url}?limit=${limit}&raw_json=1`, { headers });
-  if (!res.ok) {
-    throw new Error(`Reddit fetch failed: ${url} -> HTTP ${res.status}`);
-  }
-  const json = (await res.json()) as {
-    data: { children: { data: Record<string, unknown> }[] };
-  };
-  return json.data.children.map((c) => {
-    const d = c.data;
-    return {
-      id: String(d.id),
-      subreddit: String(d.subreddit),
-      title: String(d.title ?? ""),
-      selftext: String(d.selftext ?? ""),
-      score: Number(d.score ?? 0),
-      numComments: Number(d.num_comments ?? 0),
-      createdUtc: Number(d.created_utc ?? 0),
-      permalink: `https://reddit.com${String(d.permalink ?? "")}`,
-      url: String(d.url ?? ""),
-      isSelf: Boolean(d.is_self),
-    };
-  });
+function attr(xml: string, name: string, attrName: string): string | undefined {
+  return xml.match(new RegExp(`<${name}[^>]*\\s${attrName}="([^"]*)"`))?.[1];
+}
+function decode(s: string): string {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&#32;/g, " ");
 }
