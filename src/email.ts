@@ -40,6 +40,7 @@ export async function sendDigest(date: string, stories: DraftedStory[]): Promise
   const user = requireEnv("GMAIL_USER");
   const pass = requireEnv("GMAIL_APP_PASSWORD");
   const to = requireEnv("DIGEST_TO");
+  const cc = process.env.DIGEST_CC || undefined; // optional — comma-separated is fine, nodemailer accepts it as-is
 
   const transport = nodemailer.createTransport({
     service: "gmail",
@@ -49,6 +50,7 @@ export async function sendDigest(date: string, stories: DraftedStory[]): Promise
   await transport.sendMail({
     from: `HockeyGods News <${user}>`,
     to,
+    cc,
     subject: `HockeyGods News — ${date} (${stories.length})`,
     html: renderDigestHtml(date, stories),
   });
