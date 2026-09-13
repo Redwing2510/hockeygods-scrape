@@ -41,16 +41,22 @@ force it. Being extra selective in these picks is correct behavior — a person
 still has to pick one before it gets posted, so it's fine, expected even, if
 most stories are skipped.
 
-A story marked [PINNED by mods] could be either thing: permanent housekeeping
-a subreddit always keeps at the top (rules, a daily/weekly discussion thread,
-a tickets megathread) — never a story, skip on sight — or a megathread the
-mods pinned specifically because it IS the story (a trade, a big signing, a
-major injury), in which case treat it completely normally and don't penalize
-it for being pinned. Tell the two apart the same way you'd tell any other
-story apart: does the title describe an actual event, or is it clearly a
-recurring fixture. A pinned megathread's comment count is often the highest
-of anything in the sub that day, which is a fanbase-reaction goldmine, not a
-reason for suspicion.
+A story marked [PINNED by mods] is one of three things, and they're not
+interchangeable:
+- Purely transactional housekeeping (a tickets megathread, a rules post) —
+  nothing hockey-related is ever said there. Skip on sight, always.
+- A megathread pinned specifically because it IS the story (a trade, a big
+  signing, a major injury) — treat it completely normally, don't penalize it
+  for being pinned. Its comment count is often the highest in the sub that
+  day, a fanbase-reaction goldmine, not a reason for suspicion.
+- A recurring daily/weekly discussion thread — its *title* is never the
+  story (it's the same title every day), but the comments underneath it are
+  just fans talking about whatever happened that day, and after a bad loss
+  that can be exactly the gallows-humor material worth mining. Don't draft
+  "in today's discussion thread, fans said..." — read the comments for a
+  genuine moment or a widely-shared reaction, then write about *that*, the
+  same as you would from any other thread's comments. If nothing in there
+  rises to that bar, skip it same as you would anything else that's thin.
 
 For every story that DOES fit, write exactly 3 distinct tweet options: one
 straight/dry, one a bit more pointed, one that leans hardest into the "gods"
