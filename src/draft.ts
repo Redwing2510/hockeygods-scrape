@@ -1,5 +1,5 @@
 import { VOICE_GUIDE, DRAFTING_INSTRUCTIONS } from "./voice.js";
-import type { RedditPost } from "./reddit.js";
+import type { Candidate } from "./types.js";
 
 export interface DraftedStory {
   team: string;
@@ -11,14 +11,11 @@ export interface DraftedStory {
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
 
 /**
- * One Claude call per team's candidate posts. Keeping it per-team (rather than
- * one giant call for all 32) keeps each response small enough to parse
- * reliably and means one bad subreddit fetch doesn't sink the whole digest.
+ * One Claude call per team's candidates. Keeping it per-team (rather than one
+ * giant call for all 32) keeps each response small enough to parse reliably
+ * and means one bad subreddit fetch doesn't sink the whole digest.
  */
-export async function draftForTeam(
-  team: string,
-  posts: RedditPost[],
-): Promise<DraftedStory[]> {
+export async function draftForTeam(team: string, posts: Candidate[]): Promise<DraftedStory[]> {
   if (posts.length === 0) return [];
 
   const key = process.env.ANTHROPIC_API_KEY;
@@ -28,8 +25,15 @@ export async function draftForTeam(
     .slice(0, 15)
     .map((p, i) => {
       const age = hoursAgo(p.publishedAt);
+      const engagement =
+        p.upvotes != null ? ` — ${p.upvotes} upvotes, ${p.numComments} comments` : "";
       const link = p.externalUrl ? `\n   article: ${p.externalUrl}` : "";
-      return `${i + 1}. "${p.title}" (${age}h ago, r/${p.subreddit} hot)${link}`;
+      const comments = (p.topComments ?? [])
+        .slice(0, 5)
+        .map((c) => `     "${c.body.replace(/\s+/g, " ").slice(0, 200)}" (${c.score} pts)`)
+        .join("\n");
+      const commentsBlock = comments ? `\n   top comments:\n${comments}` : "";
+      return `${i + 1}. "${p.title}" (${age}h ago, r/${p.subreddit} hot${engagement})${link}${commentsBlock}`;
     })
     .join("\n");
 
@@ -77,7 +81,8 @@ export async function draftForTeam(
     .filter((x): x is DraftedStory => x !== null);
 }
 
-function hoursAgo(iso: string): number {
+function hoursAgo(iso?: string): number {
+  if (!iso) return 0;
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return 0;
   return Math.max(0, Math.round((Date.now() - t) / 3_600_000));

@@ -1,10 +1,18 @@
 import { TEAM_SUBREDDITS, LEAGUE_SUBREDDIT } from "./subreddits.js";
-import { fetchHot, type RedditPost } from "./reddit.js";
+import { fetchHot } from "./reddit.js";
+import { fetchWithComments } from "./redditapis.js";
 import { draftForTeam, type DraftedStory } from "./draft.js";
 import { sendDigest, renderDigestHtml } from "./email.js";
+import type { Candidate } from "./types.js";
 
-const DRAFT_CONCURRENCY = 4;
 const dryRun = process.argv.includes("--dry-run");
+const usingPaidApi = Boolean(process.env.REDDITAPIS_TOKEN);
+
+// redditapis.com has no shared per-minute throttle to respect (that's the
+// whole point of paying for it), so fetches run concurrently; the free RSS
+// fallback paces itself internally and stays sequential regardless.
+const FETCH_CONCURRENCY = usingPaidApi ? 5 : 1;
+const DRAFT_CONCURRENCY = 4;
 
 async function pool<T, R>(items: T[], fn: (item: T) => Promise<R>, conc: number): Promise<R[]> {
   const out: R[] = [];
@@ -20,24 +28,17 @@ async function pool<T, R>(items: T[], fn: (item: T) => Promise<R>, conc: number)
   return out;
 }
 
-/**
- * One subreddit at a time, on purpose — Reddit's RSS rate limit is a single
- * shared budget per IP (see src/reddit.ts), so fetching "concurrently" here
- * would just mean every request but the first gets a 429 and retries anyway.
- * Expect this loop alone to take ~30-35 minutes for all 33 subs.
- */
-async function fetchAll(entries: [string, string][]): Promise<Map<string, RedditPost[]>> {
-  const byTeam = new Map<string, RedditPost[]>();
-  for (const [team, sub] of entries) {
-    try {
-      const posts = await fetchHot(sub);
-      byTeam.set(team, posts);
-      console.log(`  [${team}] r/${sub} — ${posts.length} posts`);
-    } catch (err) {
-      console.error(`  [${team}] r/${sub} — skipped: ${(err as Error).message}`);
-    }
+async function fetchTeam(team: string, subreddit: string): Promise<[string, Candidate[]]> {
+  try {
+    const posts = usingPaidApi
+      ? await fetchWithComments(subreddit)
+      : await fetchHot(subreddit);
+    console.log(`  [${team}] r/${subreddit} — ${posts.length} posts`);
+    return [team, posts];
+  } catch (err) {
+    console.error(`  [${team}] r/${subreddit} — skipped: ${(err as Error).message}`);
+    return [team, []];
   }
-  return byTeam;
 }
 
 async function main() {
@@ -46,8 +47,13 @@ async function main() {
     ["NHL", LEAGUE_SUBREDDIT],
   ];
 
-  console.log(`Fetching ${entries.length} subreddits (paced ~1/min, so this takes a while)...`);
-  const byTeam = await fetchAll(entries);
+  console.log(
+    usingPaidApi
+      ? `Fetching ${entries.length} subreddits via redditapis.com (with comments)...`
+      : `Fetching ${entries.length} subreddits via Reddit RSS (paced ~1/min, so this takes a while)...`,
+  );
+  const fetched = await pool(entries, ([team, sub]) => fetchTeam(team, sub), FETCH_CONCURRENCY);
+  const byTeam = new Map(fetched.filter(([, posts]) => posts.length > 0));
 
   console.log(`\nDrafting for ${byTeam.size} teams with posts...`);
   const results = await pool(
@@ -55,7 +61,7 @@ async function main() {
     ([team, posts]) => draftForTeam(team, posts),
     DRAFT_CONCURRENCY,
   );
-  const stories = results.flat();
+  const stories = results.flat() as DraftedStory[];
 
   const date = new Date().toISOString().slice(0, 10);
   console.log(`\n${stories.length} candidate stories drafted for ${date}.`);

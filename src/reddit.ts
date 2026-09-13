@@ -1,31 +1,23 @@
 /**
- * Reddit's read-only OAuth API requires registering an app, and by late 2025
- * that path had enough friction (verification steps, review) that it wasn't
- * worth it for this. Its RSS feeds, though, still work with zero signup —
- * confirmed by hand: `curl .../hot.rss` -> 200 with real entries, no auth.
+ * No-signup fallback data source, used only when REDDITAPIS_TOKEN isn't set.
+ * Reddit's own OAuth API requires app registration (approval-gated as of the
+ * 2026 policy change); its RSS feeds still work with zero signup — confirmed
+ * by hand: `curl .../hot.rss` -> 200 with real entries, no auth.
  *
  * The tradeoff is a hard rate limit: Reddit's response headers show exactly
  * one request per ~60 seconds per IP (`x-ratelimit-remaining: 0`, `reset: 55`
  * after a single call). fetchHot() below paces itself against that, reading
  * the real reset time off each response rather than guessing — so a 33-
- * subreddit run takes about half an hour, which is fine for something that
- * runs once before anyone's awake to read the digest.
+ * subreddit run takes about half an hour this way.
  *
- * No score or comment count is available this way (RSS doesn't carry them) —
- * "hot" ordering already bakes in Reddit's own vote+recency ranking, so the
- * feed's order is used as the relevance signal instead.
+ * No score, comment count, or comment text is available via RSS — "hot"
+ * ordering already bakes in Reddit's own vote+recency ranking, so the feed's
+ * order stands in as the relevance signal. src/redditapis.ts is the primary
+ * path now (real engagement numbers, real comments, no per-minute pacing);
+ * this stays as the free option when no paid key is configured.
  */
 
-export interface RedditPost {
-  id: string;
-  subreddit: string;
-  title: string;
-  /** The reddit comments thread. */
-  permalink: string;
-  /** The linked article, if the post links out rather than being a text post. */
-  externalUrl?: string;
-  publishedAt: string;
-}
+import type { Candidate } from "./types.js";
 
 const UA = process.env.REDDIT_USER_AGENT || "hockeygods-scrape/0.1 (+contact via account owner)";
 const MIN_GAP_MS = 61_000; // Reddit's own window is ~60s; pad it by a second.
@@ -54,7 +46,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Hot posts from one subreddit — the only listing fetched, to keep the daily
  *  run to one pass rather than one pass per sort order. */
-export async function fetchHot(subreddit: string, limit = 15): Promise<RedditPost[]> {
+export async function fetchHot(subreddit: string, limit = 15): Promise<Candidate[]> {
   const res = await paced(`https://www.reddit.com/r/${subreddit}/hot.rss?limit=${limit}`);
   if (!res.ok) {
     throw new Error(`r/${subreddit} -> HTTP ${res.status}`);
@@ -62,7 +54,7 @@ export async function fetchHot(subreddit: string, limit = 15): Promise<RedditPos
   return parseFeed(await res.text(), subreddit);
 }
 
-function parseFeed(xml: string, subreddit: string): RedditPost[] {
+function parseFeed(xml: string, subreddit: string): Candidate[] {
   const entries = xml.match(/<entry>[\s\S]*?<\/entry>/g) ?? [];
   return entries
     .map((entry) => {

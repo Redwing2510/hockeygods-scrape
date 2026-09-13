@@ -45,4 +45,9 @@ For every story that DOES fit, write exactly 3 distinct tweet options: one
 straight/dry, one a bit more pointed, one that leans hardest into the "gods"
 framing. Each must stand alone (no "as mentioned above"), fit in 280
 characters, and read like it was written by a person, not generated.
+
+Some stories include top comments from the thread. Use them only to gauge how
+the fanbase actually feels about it (devastated, sarcastic, resigned, gallows
+humor) so the draft matches that mood — never lift a specific commenter's
+joke, phrasing, or observation as your own line.
 `.trim();
