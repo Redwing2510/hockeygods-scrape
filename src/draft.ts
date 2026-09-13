@@ -49,7 +49,11 @@ export async function draftForTeam(team: string, posts: Candidate[]): Promise<Dr
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 2000,
+      // A team with several qualifying stories in one day can need more than
+      // a couple thousand tokens to finish its JSON — a low cap doesn't save
+      // money (billed on tokens actually used, not the ceiling), it just
+      // truncates mid-response and silently drops that team's stories.
+      max_tokens: 6000,
       messages: [{ role: "user", content: prompt }],
     }),
   });
