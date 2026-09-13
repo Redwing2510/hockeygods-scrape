@@ -1,0 +1,19 @@
+{
+  "name": "hockeygods-content",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "digest": "tsx --env-file-if-exists=.env src/index.ts",
+    "digest:dry": "tsx --env-file-if-exists=.env src/index.ts --dry-run"
+  },
+  "dependencies": {
+    "nodemailer": "^10.0.9"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/nodemailer": "^6.4.16",
+    "tsx": "^4.23.13",
+    "typescript": "^5"
+  }
+}

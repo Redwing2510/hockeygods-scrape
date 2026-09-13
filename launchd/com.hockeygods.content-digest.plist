@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hockeygods.content-digest</string>
+
+  <!-- Runs via a login shell so it picks up PATH (node, npm) the same way a
+       terminal would, rather than launchd's minimal default PATH. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-l</string>
+    <string>-c</string>
+    <string>cd /ABSOLUTE/PATH/TO/hockeygods-content &amp;&amp; npm run digest</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>7</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/ABSOLUTE/PATH/TO/hockeygods-content/digest.log</string>
+  <key>StandardErrorPath</key>
+  <string>/ABSOLUTE/PATH/TO/hockeygods-content/digest.err</string>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>
