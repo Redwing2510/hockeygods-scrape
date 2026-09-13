@@ -30,7 +30,7 @@ async function getToken(): Promise<string> {
 
   const id = requireEnv("REDDIT_CLIENT_ID");
   const secret = requireEnv("REDDIT_CLIENT_SECRET");
-  const ua = process.env.REDDIT_USER_AGENT || "hockeygods-content-bot/0.1";
+  const ua = process.env.REDDIT_USER_AGENT || "hockeygods-scrape-bot/0.1";
 
   const res = await fetch("https://www.reddit.com/api/v1/access_token", {
     method: "POST",
@@ -62,7 +62,7 @@ function requireEnv(name: string): string {
  */
 export async function fetchCandidatePosts(subreddit: string, limit = 15): Promise<RedditPost[]> {
   const token = await getToken();
-  const ua = process.env.REDDIT_USER_AGENT || "hockeygods-content-bot/0.1";
+  const ua = process.env.REDDIT_USER_AGENT || "hockeygods-scrape-bot/0.1";
   const headers = { Authorization: `Bearer ${token}`, "User-Agent": ua };
 
   const [hot, rising] = await Promise.all([

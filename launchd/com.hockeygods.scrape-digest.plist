@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.hockeygods.content-digest</string>
+  <string>com.hockeygods.scrape-digest</string>
 
   <!-- Runs via a login shell so it picks up PATH (node, npm) the same way a
        terminal would, rather than launchd's minimal default PATH. -->
@@ -12,7 +12,7 @@
     <string>/bin/zsh</string>
     <string>-l</string>
     <string>-c</string>
-    <string>cd /ABSOLUTE/PATH/TO/hockeygods-content &amp;&amp; npm run digest</string>
+    <string>cd /ABSOLUTE/PATH/TO/hockeygods-scrape &amp;&amp; npm run digest</string>
   </array>
 
   <key>StartCalendarInterval</key>
@@ -24,9 +24,9 @@
   </dict>
 
   <key>StandardOutPath</key>
-  <string>/ABSOLUTE/PATH/TO/hockeygods-content/digest.log</string>
+  <string>/ABSOLUTE/PATH/TO/hockeygods-scrape/digest.log</string>
   <key>StandardErrorPath</key>
-  <string>/ABSOLUTE/PATH/TO/hockeygods-content/digest.err</string>
+  <string>/ABSOLUTE/PATH/TO/hockeygods-scrape/digest.err</string>
 
   <key>RunAtLoad</key>
   <false/>

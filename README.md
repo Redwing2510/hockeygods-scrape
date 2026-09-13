@@ -21,7 +21,7 @@ Then fill in `.env`:
 3. `REDDIT_CLIENT_ID` is the string under the app's name (looks like
    `Ab12Cd34Ef56Gh`). `REDDIT_CLIENT_SECRET` is the field labelled "secret".
 4. `REDDIT_USER_AGENT` — anything descriptive, e.g.
-   `hockeygods-content-bot/0.1 by u/yourname`.
+   `hockeygods-scrape-bot/0.1 by u/yourname`.
 
 Reddit's unauthenticated `.json` endpoints return 403 for non-browser clients
 as of late 2025 — this is why the script needs a real (free) app instead of
@@ -58,15 +58,15 @@ paying for hosting, since it just needs to run once a day on a machine that's
 usually on anyway.
 
 ```bash
-cp launchd/com.hockeygods.content-digest.plist ~/Library/LaunchAgents/
+cp launchd/com.hockeygods.scrape-digest.plist ~/Library/LaunchAgents/
 # edit the copied file: fix the two /ABSOLUTE/PATH/TO placeholders
-launchctl load ~/Library/LaunchAgents/com.hockeygods.content-digest.plist
+launchctl load ~/Library/LaunchAgents/com.hockeygods.scrape-digest.plist
 ```
 
 It's set to run at 7:00am local time; change the `Hour`/`Minute` in the plist
 to taste. Logs land in `digest.log` / `digest.err` next to the project.
 
-To stop it: `launchctl unload ~/Library/LaunchAgents/com.hockeygods.content-digest.plist`.
+To stop it: `launchctl unload ~/Library/LaunchAgents/com.hockeygods.scrape-digest.plist`.
 
 If this ends up running somewhere other than a Mac that's regularly on (a
 server, a scheduled cloud job), swap `launchd` for a plain cron entry or a
