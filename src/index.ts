@@ -3,6 +3,7 @@ import { fetchHot } from "./reddit.js";
 import { fetchWithComments } from "./redditapis.js";
 import { draftForTeam, type DraftedStory } from "./draft.js";
 import { sendDigest, renderDigestHtml } from "./email.js";
+import { loadSeen, isSuppressed, recordAndPrune } from "./seen.js";
 import type { Candidate } from "./types.js";
 
 const dryRun = process.argv.includes("--dry-run");
@@ -53,9 +54,26 @@ async function main() {
       : `Fetching ${entries.length} subreddits via Reddit RSS (paced ~1/min, so this takes a while)...`,
   );
   const fetched = await pool(entries, ([team, sub]) => fetchTeam(team, sub), FETCH_CONCURRENCY);
-  const byTeam = new Map(fetched.filter(([, posts]) => posts.length > 0));
 
-  console.log(`\nDrafting for ${byTeam.size} teams with posts...`);
+  // Drop anything already shown to Claude whose comment count hasn't moved
+  // meaningfully since then — otherwise a story that stays "hot" for days
+  // gets redrafted and re-emailed each morning. A real surge in comments
+  // (sentiment flipping, national coverage catching up) un-suppresses it. See
+  // src/seen.ts for the exact rule, and why this is keyed on "shown to
+  // Claude", not "actually drafted".
+  const seen = await loadSeen();
+  const byTeam = new Map<string, Candidate[]>();
+  let totalFetched = 0;
+  let totalNew = 0;
+  for (const [team, posts] of fetched) {
+    totalFetched += posts.length;
+    const fresh = posts.filter((p) => !isSuppressed(seen, p.id, p.numComments));
+    totalNew += fresh.length;
+    if (fresh.length > 0) byTeam.set(team, fresh);
+  }
+  console.log(`\n${totalFetched - totalNew} of ${totalFetched} posts already seen with nothing new — skipping those.`);
+
+  console.log(`Drafting for ${byTeam.size} teams with new posts...`);
   const results = await pool(
     [...byTeam.entries()],
     ([team, posts]) => draftForTeam(team, posts),
@@ -67,7 +85,7 @@ async function main() {
   console.log(`\n${stories.length} candidate stories drafted for ${date}.`);
 
   if (dryRun) {
-    console.log("\n--- DRY RUN: would email this ---\n");
+    console.log("\n--- DRY RUN: would email this (seen-tracking not updated) ---\n");
     for (const s of stories) {
       console.log(`\n[${s.team}] ${s.sourceTitle}\n  ${s.sourceUrl}`);
       s.tweets.forEach((t, i) => console.log(`  ${i + 1}. ${t}`));
@@ -80,6 +98,14 @@ async function main() {
 
   await sendDigest(date, stories);
   console.log("Digest emailed.");
+
+  // Every post shown to Claude this run counts as "seen" going forward, drafted
+  // or not, recorded with today's comment count as the new baseline to grow
+  // past — mark them only now, after a successful send.
+  const shown = [...byTeam.values()].flatMap((posts) =>
+    posts.map((p) => ({ id: p.id, numComments: p.numComments })),
+  );
+  await recordAndPrune(seen, shown);
 }
 
 main().catch((err) => {

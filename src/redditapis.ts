@@ -42,22 +42,27 @@ interface ApiPost {
   upvotes: number;
   comments: number;
   created: string;
+  stickied?: boolean;
 }
 
 export async function fetchHotPosts(subreddit: string, limit = 15): Promise<Candidate[]> {
   const data = await get<{ posts: ApiPost[] }>(
     `/api/reddit/posts?subreddit=${subreddit}&sort=hot&limit=${limit}`,
   );
-  return (data.posts ?? []).map((p) => ({
-    id: p.id,
-    subreddit: p.subreddit,
-    title: p.title,
-    permalink: p.url,
-    externalUrl: p.link_url ?? undefined,
-    publishedAt: p.created,
-    upvotes: p.upvotes ?? 0,
-    numComments: p.comments ?? 0,
-  }));
+  return (data.posts ?? [])
+    // Pinned community threads (rules megathreads, "anything goes" days,
+    // tickets megathreads) — permanent fixtures of "hot", never a story.
+    .filter((p) => !p.stickied)
+    .map((p) => ({
+      id: p.id,
+      subreddit: p.subreddit,
+      title: p.title,
+      permalink: p.url,
+      externalUrl: p.link_url ?? undefined,
+      publishedAt: p.created,
+      upvotes: p.upvotes ?? 0,
+      numComments: p.comments ?? 0,
+    }));
 }
 
 interface ApiCommentNode {
