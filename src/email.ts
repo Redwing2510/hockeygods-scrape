@@ -26,8 +26,8 @@ export function renderDigestHtml(date: string, stories: DraftedStory[]): string 
 
   return `
     <div style="background:#0a0a0b;color:#f2f0ec;font-family:-apple-system,sans-serif;padding:24px;">
-      <h1 style="font-size:20px;margin:0 0 4px;">HockeyGods — daily drafts</h1>
-      <p style="color:#9aa4b2;font-size:13px;margin:0 0 24px;">${date} · ${stories.length} candidate${stories.length === 1 ? "" : "s"}. Pick, edit, post.</p>
+      <h1 style="font-size:20px;margin:0 0 4px;">HockeyGods News</h1>
+      <p style="color:#9aa4b2;font-size:13px;margin:0 0 24px;">${date} · ${stories.length} candidate${stories.length === 1 ? "" : "s"} — drafts, not posted. Pick, edit, post.</p>
       ${sections}
     </div>`;
 }
@@ -47,9 +47,9 @@ export async function sendDigest(date: string, stories: DraftedStory[]): Promise
   });
 
   await transport.sendMail({
-    from: `HockeyGods Drafts <${user}>`,
+    from: `HockeyGods News <${user}>`,
     to,
-    subject: `HockeyGods drafts — ${date} (${stories.length})`,
+    subject: `HockeyGods News — ${date} (${stories.length})`,
     html: renderDigestHtml(date, stories),
   });
 }
