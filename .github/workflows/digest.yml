@@ -1,36 +1,40 @@
 name: Daily digest
 
-# GitHub Actions cron is UTC-only and doesn't shift for US daylight saving, so
-# there's no single cron expression that's always "noon Eastern". Fix: fire at
-# both UTC times that noon Eastern can be (EDT and EST), and let the first
-# step skip whichever one doesn't match the real current Eastern hour. Exactly
-# one of the two actually runs the digest on any given day.
+# GitHub's schedule trigger is UTC-only (no DST awareness) and, in practice,
+# best-effort — it can run significantly later than the time configured, not
+# just a few minutes late. Both problems get solved the same way: don't gate
+# on "is it exactly noon Eastern right now" (which a delay of even an hour
+# breaks entirely — confirmed in production on 2026-09-14, both triggers
+# fired ~4-5 hours late and the digest silently never sent that day). Instead
+# gate on "has today's Eastern date already been sent" — robust to any delay,
+# and still prevents a double-send on days where both seasonal triggers below
+# end up landing close together.
 on:
   schedule:
-    - cron: "0 16 * * *" # 12:00 EDT (mid-Mar -> early Nov)
-    - cron: "0 17 * * *" # 12:00 EST (early Nov -> mid-Mar)
-  workflow_dispatch: {} # manual "Run workflow" button in the Actions tab
+    - cron: "0 16 * * *" # ~noon Eastern during EDT (mid-Mar -> early Nov)
+    - cron: "0 17 * * *" # ~noon Eastern during EST (early Nov -> mid-Mar)
+  workflow_dispatch: {} # manual "Run workflow" button — always sends, regardless of the guard
 
 permissions:
-  contents: write # needed to commit data/seen.json back after each run
+  contents: write # needed to commit data/ back after each real run
 
 jobs:
   digest:
     runs-on: ubuntu-latest
     steps:
-      - name: Only proceed if it's actually noon Eastern right now
+      - uses: actions/checkout@v4
+
+      - name: Only send once per Eastern calendar day
         id: gate
         run: |
-          hour=$(TZ="America/New_York" date +%H)
-          if [ "$hour" = "12" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          today=$(TZ="America/New_York" date +%F)
+          last=$(cat data/last-sent.txt 2>/dev/null || echo "never")
+          if [ "$today" != "$last" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "proceed=true" >> "$GITHUB_OUTPUT"
           else
             echo "proceed=false" >> "$GITHUB_OUTPUT"
-            echo "It's $hour:00 Eastern, not noon — this is the other seasonal trigger, skipping."
+            echo "Already sent today ($today, last run recorded as $last) — the other seasonal trigger or a delayed duplicate. Skipping."
           fi
-
-      - uses: actions/checkout@v4
-        if: steps.gate.outputs.proceed == 'true'
 
       - uses: actions/setup-node@v4
         if: steps.gate.outputs.proceed == 'true'
@@ -50,17 +54,18 @@ jobs:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           DIGEST_TO: ${{ secrets.DIGEST_TO }}
+          DIGEST_CC: ${{ secrets.DIGEST_CC }}
         run: npm run digest
 
-      # Runners are a fresh VM every time, so data/seen.json (the dedup memory
-      # from src/seen.ts) has to be committed back or every run would think
-      # every post is brand new. Safe to always attempt: a no-op commit when
-      # nothing changed just does nothing.
-      - name: Save updated seen-post tracking
+      # Runners are a fresh VM every time, so both data/seen.json (dedup
+      # memory, src/seen.ts) and data/last-sent.txt (the guard above) have to
+      # be committed back or every run starts from zero state.
+      - name: Save state
         if: steps.gate.outputs.proceed == 'true'
         run: |
+          TZ="America/New_York" date +%F > data/last-sent.txt
           git config user.name "hockeygods-scrape bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data/seen.json
-          git diff --cached --quiet || git commit -m "Update seen-post tracking [skip ci]"
+          git add data/seen.json data/last-sent.txt
+          git diff --cached --quiet || git commit -m "Update digest state [skip ci]"
           git push
