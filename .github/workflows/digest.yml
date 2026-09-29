@@ -11,8 +11,8 @@ name: Daily digest
 # end up landing close together.
 on:
   schedule:
-    - cron: "0 16 * * *" # ~noon Eastern during EDT (mid-Mar -> early Nov)
-    - cron: "0 17 * * *" # ~noon Eastern during EST (early Nov -> mid-Mar)
+    - cron: "0 15 * * *" # ~noon Eastern during EDT (mid-Mar -> early Nov)
+    - cron: "0 16 * * *" # ~noon Eastern during EST (early Nov -> mid-Mar)
   workflow_dispatch: {} # manual "Run workflow" button — always sends, regardless of the guard
 
 permissions:
