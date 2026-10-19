@@ -1,15 +1,15 @@
 import { VOICE_GUIDE, DRAFTING_INSTRUCTIONS } from "./voice.js";
 import type { Candidate } from "./types.js";
-
+ 
 export interface DraftedStory {
   team: string;
   sourceTitle: string;
   sourceUrl: string;
   tweets: string[];
 }
-
+ 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
-
+ 
 // Forces a real, schema-shaped response instead of asking the model to write
 // JSON as prose and hoping it comes out well-formed — confirmed by hand
 // (structured-test.ts) this eliminates the malformed/truncated-JSON failures
@@ -35,14 +35,14 @@ const DRAFT_TOOL = {
     required: ["sourceIndex", "tweet1", "tweet2", "tweet3"],
   },
 };
-
+ 
 interface RawStory {
   sourceIndex: number;
   tweet1: string;
   tweet2: string;
   tweet3: string;
 }
-
+ 
 /**
  * One Claude call per team's candidates. Keeping it per-team (rather than one
  * giant call for all 32) keeps each response small enough to stay reliable
@@ -50,10 +50,10 @@ interface RawStory {
  */
 export async function draftForTeam(team: string, posts: Candidate[]): Promise<DraftedStory[]> {
   if (posts.length === 0) return [];
-
+ 
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("Missing ANTHROPIC_API_KEY — copy .env.example to .env and fill it in.");
-
+ 
   const listing = posts
     .slice(0, 15)
     .map((p, i) => {
@@ -64,15 +64,19 @@ export async function draftForTeam(team: string, posts: Candidate[]): Promise<Dr
       const link = p.externalUrl ? `\n   article: ${p.externalUrl}` : "";
       const comments = (p.topComments ?? [])
         .slice(0, 5)
-        .map((c) => `     "${c.body.replace(/\s+/g, " ").slice(0, 200)}" (${c.score} pts)`)
+        .map((c) => `     "${clip(c.body.replace(/\s+/g, " "), 200)}" (${c.score} pts)`)
         .join("\n");
       const commentsBlock = comments ? `\n   top comments:\n${comments}` : "";
       return `${i + 1}. "${p.title}"${pinned} (${age}h ago, r/${p.subreddit} hot${engagement})${link}${commentsBlock}`;
     })
     .join("\n");
-
-  const prompt = `${VOICE_GUIDE}\n\n${DRAFTING_INSTRUCTIONS}\n\nTeam: ${team}\nToday's r/${team.toLowerCase()} hot posts:\n\n${listing}`;
-
+ 
+  // toWellFormed() replaces any lone UTF-16 surrogate (e.g. half an emoji from
+  // scraped text) with U+FFFD. JSON.stringify would otherwise emit it as a bare
+  // "\ud83d" escape, which the API rejects as "unexpected end of hex escape"
+  // (this is what broke LAK on 2026-10-19).
+  const prompt = `${VOICE_GUIDE}\n\n${DRAFTING_INSTRUCTIONS}\n\nTeam: ${team}\nToday's r/${team.toLowerCase()} hot posts:\n\n${listing}`.toWellFormed();
+ 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -107,7 +111,7 @@ export async function draftForTeam(team: string, posts: Candidate[]): Promise<Dr
     (c): c is { type: "tool_use"; name: string; input: RawStory } =>
       c.type === "tool_use" && c.name === "propose_draft" && !!c.input,
   );
-
+ 
   return calls
     .map((call) => {
       const item = call.input;
@@ -122,10 +126,15 @@ export async function draftForTeam(team: string, posts: Candidate[]): Promise<Dr
     })
     .filter((x): x is DraftedStory => x !== null);
 }
-
+ 
 function hoursAgo(iso?: string): number {
   if (!iso) return 0;
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return 0;
   return Math.max(0, Math.round((Date.now() - t) / 3_600_000));
+}
+ 
+/** Truncate by code points, not UTF-16 units, so emoji never get split in half. */
+function clip(s: string, n: number): string {
+  return Array.from(s).slice(0, n).join("");
 }
