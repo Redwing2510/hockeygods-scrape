@@ -1,4 +1,4 @@
-name: Daily digest
+name: Digest (every other day)
 
 # GitHub's schedule trigger is UTC-only (no DST awareness) and, in practice,
 # best-effort — it can run significantly later than the time configured, not
@@ -24,16 +24,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Only send once per Eastern calendar day
+      # Cron runs every day; this gate makes it every OTHER day by skipping
+      # unless 2+ Eastern calendar days have passed since the last send. That
+      # also covers the double-trigger days (diff 0) and self-heals if a run is
+      # dropped (the next day sees diff 3 and runs). A manual run resets the
+      # clock, since it writes last-sent.txt too.
+      - name: Only send every other Eastern calendar day
         id: gate
         run: |
           today=$(TZ="America/New_York" date +%F)
           last=$(cat data/last-sent.txt 2>/dev/null || echo "never")
-          if [ "$today" != "$last" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "$last" = "never" ]; then
+            days=999
+          else
+            days=$(( ( $(date -u -d "$today" +%s) - $(date -u -d "$last" +%s) ) / 86400 ))
+          fi
+          if [ "$days" -ge 2 ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "proceed=true" >> "$GITHUB_OUTPUT"
           else
             echo "proceed=false" >> "$GITHUB_OUTPUT"
-            echo "Already sent today ($today, last run recorded as $last) — the other seasonal trigger or a delayed duplicate. Skipping."
+            echo "Last sent $last, today is $today ($days day(s) ago) — sending every other day. Skipping."
           fi
 
       - uses: actions/setup-node@v4
