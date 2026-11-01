@@ -6,6 +6,9 @@ export interface DraftedStory {
   sourceTitle: string;
   sourceUrl: string;
   tweets: string[];
+  memeIdea?: string;
+  sourceId: string;
+  engagement: number;
 }
  
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
@@ -30,7 +33,12 @@ const DRAFT_TOOL = {
       sourceIndex: { type: "integer", description: "1-based index into the candidate list." },
       tweet1: { type: "string", description: "The straight/dry option." },
       tweet2: { type: "string", description: "The more pointed option." },
-      tweet3: { type: "string", description: "The option that leans hardest into the 'gods' framing." },
+      tweet3: { type: "string", description: "A third, different angle — the 'gods' take only if the story truly fits it." },
+      memeIdea: {
+        type: "string",
+        description:
+          "OPTIONAL — omit unless a visual would genuinely improve this tweet (most stories shouldn't have one). Pick the type that fits (real clip/photo, a screenshot of something funny, a logo/pop-culture edit, a then-vs-now comparison, a joke soundtrack, or a template meme) and say exactly what the image is. Max ~30 words.",
+      },
     },
     required: ["sourceIndex", "tweet1", "tweet2", "tweet3"],
   },
@@ -41,6 +49,7 @@ interface RawStory {
   tweet1: string;
   tweet2: string;
   tweet3: string;
+  memeIdea?: string;
 }
  
 /**
@@ -113,7 +122,7 @@ export async function draftForTeam(team: string, posts: Candidate[]): Promise<Dr
   );
  
   return calls
-    .map((call) => {
+    .map((call): DraftedStory | null => {
       const item = call.input;
       const post = posts[item.sourceIndex - 1];
       if (!post) return null;
@@ -122,6 +131,9 @@ export async function draftForTeam(team: string, posts: Candidate[]): Promise<Dr
         sourceTitle: post.title,
         sourceUrl: post.permalink,
         tweets: [item.tweet1, item.tweet2, item.tweet3],
+        memeIdea: item.memeIdea?.trim() || undefined,
+        sourceId: post.id,
+        engagement: (post.upvotes ?? 0) + (post.numComments ?? 0),
       };
     })
     .filter((x): x is DraftedStory => x !== null);

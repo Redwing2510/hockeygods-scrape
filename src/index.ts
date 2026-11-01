@@ -2,6 +2,7 @@ import { TEAM_SUBREDDITS, LEAGUE_SUBREDDIT } from "./subreddits.js";
 import { fetchHot } from "./reddit.js";
 import { fetchWithComments } from "./redditapis.js";
 import { draftForTeam, type DraftedStory } from "./draft.js";
+import { curateStories } from "./curate.js";
 import { sendDigest, renderDigestHtml } from "./email.js";
 import { loadSeen, isSuppressed, recordAndPrune } from "./seen.js";
 import type { Candidate } from "./types.js";
@@ -13,6 +14,7 @@ const usingPaidApi = Boolean(process.env.REDDITAPIS_TOKEN);
 // whole point of paying for it), so fetches run concurrently; the free RSS
 // fallback paces itself internally and stays sequential regardless.
 const FETCH_CONCURRENCY = usingPaidApi ? 5 : 1;
+const MAX_STORIES = Number(process.env.DIGEST_MAX_STORIES) || 15;
 const DRAFT_CONCURRENCY = 4;
 
 async function pool<T, R>(items: T[], fn: (item: T) => Promise<R>, conc: number): Promise<R[]> {
@@ -79,16 +81,22 @@ async function main() {
     ([team, posts]) => draftForTeam(team, posts),
     DRAFT_CONCURRENCY,
   );
-  const stories = results.flat() as DraftedStory[];
+  const drafted = results.flat() as DraftedStory[];
+
+  // The reader wants a short list, not everything that qualified: merge
+  // duplicate coverage of the same event and keep only the best few.
+  const stories = await curateStories(drafted, MAX_STORIES);
+  const cut = new Set(drafted.filter((d) => !stories.includes(d)).map((d) => d.sourceId));
 
   const date = new Date().toISOString().slice(0, 10);
-  console.log(`\n${stories.length} candidate stories drafted for ${date}.`);
+  console.log(`\n${drafted.length} candidate stories drafted, ${stories.length} kept for ${date}.`);
 
   if (dryRun) {
     console.log("\n--- DRY RUN: would email this (seen-tracking not updated) ---\n");
     for (const s of stories) {
       console.log(`\n[${s.team}] ${s.sourceTitle}\n  ${s.sourceUrl}`);
       s.tweets.forEach((t, i) => console.log(`  ${i + 1}. ${t}`));
+      if (s.memeIdea) console.log(`  Meme idea: ${s.memeIdea}`);
     }
     const fs = await import("node:fs/promises");
     await fs.writeFile("out-digest.html", renderDigestHtml(date, stories));
@@ -101,10 +109,11 @@ async function main() {
 
   // Every post shown to Claude this run counts as "seen" going forward, drafted
   // or not, recorded with today's comment count as the new baseline to grow
-  // past — mark them only now, after a successful send.
-  const shown = [...byTeam.values()].flatMap((posts) =>
-    posts.map((p) => ({ id: p.id, numComments: p.numComments })),
-  );
+  // past — mark them only now, after a successful send. The exception is a
+  // story that was drafted but cut by the cap: it stays eligible next run.
+  const shown = [...byTeam.values()]
+    .flatMap((posts) => posts.map((p) => ({ id: p.id, numComments: p.numComments })))
+    .filter((p) => !cut.has(p.id));
   await recordAndPrune(seen, shown);
 }
 

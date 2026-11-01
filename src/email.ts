@@ -20,6 +20,7 @@ export function renderDigestHtml(date: string, stories: DraftedStory[]): string 
         <ol style="margin:0;padding-left:20px;color:#f2f0ec;">
           ${s.tweets.map((t) => `<li style="margin-bottom:8px;">${escapeHtml(t)}</li>`).join("")}
         </ol>
+        ${s.memeIdea ? `<p style="margin:12px 0 0;color:#9aa4b2;font-size:13px;"><strong style="color:#8fb6e4;">Meme idea:</strong> ${escapeHtml(s.memeIdea)}</p>` : ""}
       </div>`,
     )
     .join("\n");
