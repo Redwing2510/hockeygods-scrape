@@ -23,14 +23,30 @@ function token(): string {
   return t;
 }
 
+const MAX_ATTEMPTS = 3;
+
+// The provider's own timeouts (HTTP 503 "upstream_timeout", "not billed, retry
+// shortly") are usually momentary, so retry those and rate limits with a short
+// backoff before giving up. Anything else (bad token, 404) fails immediately.
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { Authorization: `Bearer ${token()}` },
-  });
-  if (!res.ok) {
-    throw new Error(`redditapis ${path} -> HTTP ${res.status} — ${await res.text()}`);
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch(`${BASE}${path}`, {
+      headers: { Authorization: `Bearer ${token()}` },
+    });
+    if (res.ok) return res.json() as Promise<T>;
+
+    const body = await res.text();
+    const retryable = res.status === 429 || res.status >= 500;
+    if (!retryable || attempt >= MAX_ATTEMPTS) {
+      throw new Error(`redditapis ${path} -> HTTP ${res.status} — ${body}`);
+    }
+    let wait = 5;
+    try {
+      const hinted = Number(JSON.parse(body).retry_after);
+      if (hinted > 0) wait = Math.min(hinted, 15);
+    } catch {}
+    await new Promise((r) => setTimeout(r, wait * attempt * 1000));
   }
-  return res.json() as Promise<T>;
 }
 
 interface ApiPost {

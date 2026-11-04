@@ -31,6 +31,8 @@ async function pool<T, R>(items: T[], fn: (item: T) => Promise<R>, conc: number)
   return out;
 }
 
+let failedFetches = 0;
+
 async function fetchTeam(team: string, subreddit: string): Promise<[string, Candidate[]]> {
   try {
     const posts = usingPaidApi
@@ -39,6 +41,7 @@ async function fetchTeam(team: string, subreddit: string): Promise<[string, Cand
     console.log(`  [${team}] r/${subreddit} — ${posts.length} posts`);
     return [team, posts];
   } catch (err) {
+    failedFetches++;
     console.error(`  [${team}] r/${subreddit} — skipped: ${(err as Error).message}`);
     return [team, []];
   }
@@ -56,6 +59,15 @@ async function main() {
       : `Fetching ${entries.length} subreddits via Reddit RSS (paced ~1/min, so this takes a while)...`,
   );
   const fetched = await pool(entries, ([team, sub]) => fetchTeam(team, sub), FETCH_CONCURRENCY);
+
+  // If the data source is down (not just one flaky subreddit), fail the run
+  // instead of emailing an empty digest: a failed run sends nothing and leaves
+  // last-sent.txt alone, so the very next daily trigger tries again.
+  if (failedFetches > entries.length / 2) {
+    throw new Error(
+      `Reddit data source failed for ${failedFetches} of ${entries.length} subreddits — not sending an empty digest.`,
+    );
+  }
 
   // Drop anything already shown to Claude whose comment count hasn't moved
   // meaningfully since then — otherwise a story that stays "hot" for days
